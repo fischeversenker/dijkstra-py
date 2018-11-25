@@ -18,114 +18,151 @@ class Position:
     def __str__(self):
       return f"({self.x}, {self.y})"
 
+class Field:
+  def __init__(self, x: int, y: int, value: str, distance: int, predecessor = None):
+    self.value = value
+    self.position = Position(x, y)
+    self.distance = distance
+    self.explored = False
+    self.predecessor = predecessor
+
+  def __str__(self):
+    return f"Field: ({self.position.x}, {self.position.y}), {self.value}\texplored: {self.explored}\tdistance: {self.distance}"
+
+class Map:
+  def __init__(self, fields: [[Field]]):
+    self.fields = fields
+
+  def __str__(self):
+    rows = ''
+    for row in self.fields:
+      for col in row:
+        rows = rows + f" {col.value}"
+      rows = rows + "\n"
+    return rows
+
 class Move:
-  def __init__(self, current: Position, to: Position, cost: int):
+  def __init__(self, current: Field, to: Field, cost: int):
     self.current = current
     self.to = to
     self.cost = cost
 
   def __str__(self):
-    return f"Move:\tfrom: {self.current}\tto: {self.to}\tcost: {self.cost}"
+    return f"Move:\n\tfrom: {self.current}\n\tto: {self.to}\n\tcost: {self.cost}"
 
   @staticmethod
-  def make(start, end):
+  def make(start: Field, end: Field):
     return Move(start, end, Move.get_move_cost(start, end))
 
   @staticmethod
-  def get_move_cost(start: Position, end: Position):
-    if abs(start.x - end.x) > 0 and abs(start.y - end.y) > 0:
+  def get_move_cost(start: Field, end: Field):
+    if abs(start.position.x - end.position.x) > 0 and abs(start.position.y - end.position.y) > 0:
       return 10
-    if abs(start.x - end.x) > 0:
+    if abs(start.position.x - end.position.x) > 0:
       return 5
-    if abs(start.y - end.y) > 0:
+    if abs(start.position.y - end.position.y) > 0:
       return 6
-
-class Path:
-  def __init(self, moves: [Move]):
-    self.moves = moves
-
-  def addMove(self, move: Move):
-    self.moves.append(move)
-
-  def getCosts(self):
-    return sum(list(map(lambda move: move.cost, self.moves)))
 
 
 class Pathfinder:
   def __init__(self, matrix):
-    self.matrix = matrix
-    self.matrix_width = len(matrix)
-    self.matrix_height = len(matrix[0])
+    self.map_width = len(matrix[0])
+    self.map_height = len(matrix)
 
-    self.explored: [Position] = []
-    self.frontier: [Move] = []
+    self.map: Map = self.transform_matrix(matrix)
 
     self.find_robot_and_goal()
 
-  def find_robot_and_goal(self):
-    for i in range(self.matrix_width):
-      for j in range(self.matrix_height):
-        if self.matrix[i][j] == ROBOT:
-          self.robot = Position(i,j)
-          self.explored.append(self.robot)
-        if self.matrix[i][j] == GOAL:
-          self.goal = Position(i,j)
+  def transform_matrix(self, matrix):
+    transformed_matrix = []
+    last_field: Field = None
+    for y in range(len(matrix)):
+      transformed_matrix.append([])
+      for x in range(len(matrix[0])):
+        last_field = Field(x, y, matrix[y][x], float('inf'), last_field)
+        transformed_matrix[y].append(last_field)
+    return Map(transformed_matrix)
 
-  def get_frontier(self, currentPosition: Position):
-    x = currentPosition.x
-    y = currentPosition.y
+  def find_robot_and_goal(self):
+    for y in range(self.map_height):
+      for x in range(self.map_width):
+        if self.map.fields[y][x].value == ROBOT:
+          self.robot = self.map.fields[y][x]
+          self.map.fields[y][x].distance = 0
+        if self.map.fields[y][x].value == GOAL:
+          self.goal = self.map.fields[y][x]
+
+  def get_frontier(self, field: Field):
+    if field == None:
+      return []
+    x = field.position.x
+    y = field.position.y
       # all theoretically possible moves
     possible_moves = [(x-1, y), (x, y-1), (x-1, y-1), (x+1, y), (x, y+1), (x+1, y+1), (x-1, y+1), (x+1, y-1)]
     # filter out the moves leading outside of the field and remove the moves leading to rocks and the already explored positions
-    return [Position(x,y) for (x,y) in possible_moves if self.is_field_reachable(x, y)]
+    moves = []
+    for (x, y) in possible_moves:
+      if self.is_coord_free(x, y) and not field.explored:
+        next_field = self.map.fields[y][x]
+        move = Move.make(field, next_field)
+        moves.append(move)
+    sorted_moves = sorted(moves, key=lambda x: x.cost)
 
-  def is_field_reachable(self, x, y):
-    is_inside_matrix = x >= 0 and y >=0 and x < self.matrix_width and y < self.matrix_height
-    is_free = self.matrix[x][y] != OBSTACLE
-    is_unexplored = not self.is_explored(Position(x,y))
-    return is_inside_matrix and is_free and is_unexplored
+    return sorted_moves
 
-  def sort_frontier_and_add_cost(self, frontier: [Move]):
-    moves = self.sort_costs(list(map(lambda move: Move.make(self.robot, move), frontier)))
-    # for move in moves:
-    #   print(move)
-    return moves
-
-  def is_explored(self, node: Position):
-    for position in self.explored:
-      if position == node:
-        return True
+  def is_coord_free(self, x, y):
+    is_inside_matrix = x >= 0 and y >=0 and x < self.map_width and y < self.map_height
+    if is_inside_matrix:
+      field = self.map.fields[y][x]
+      is_free = not field.value == OBSTACLE
+      return is_free
     return False
 
-  def sort_costs(self, frontier: [Move]):
-    frontier.sort(key=lambda x: x.cost, reverse=True)
-    return frontier
+  def get_next_unexplored_field(self):
+    next = Field(-1, -1, OBSTACLE, float("inf"), None)
+    for y in range(self.map_height):
+      for x in range(self.map_width):
+        field = self.map.fields[y][x]
+        if self.is_coord_free(x, y) and not field.explored and field.distance <= next.distance:
+          next = field
+    if next.position.x < 0:
+      return None
+    return next
+
+  def add_distances(self, move: Move):
+    if move.current.distance + move.cost < move.to.distance:
+      move.to.distance = move.current.distance + move.cost
+      move.to.predecessor = move.current
+
+  def print_optimal_path(self):
+    pre = self.goal
+    res = []
+    if self.goal.distance == float("inf"):
+      print('no path found')
+    else:
+      while pre != None:
+        res.append(f"{pre.position}")
+        if pre.distance == 0:
+          pre = None
+        else:
+          pre = pre.predecessor
+
+      print(f"optimal path:\n\tdist:\t{self.goal.distance}\n\tpath:\t{' -> '.join(res[::-1])}")
 
   def start(self):
-    # algorithm: get possible moves, filter them, sort them, choose next
-    length = 5
-    i = 0
-    while i < length:
-      print(f"Robot is at {self.robot}")
-      #if frontier.length == 0:
-      #  return "No possible path!"
-      # get possible moves (filtered) and sort them
-      frontier = self.get_frontier(self.robot)
-      #print(frontier)
-      # sort moves
-      frontier = self.sort_frontier_and_add_cost(frontier)
-      newPosition = frontier.pop().to
-      self.robot = Position(newPosition.x, newPosition.y)
-      self.explored.append(self.robot)
-      i = i + 1
+    print(self.map)
 
-  # print(get_frontier(self.robot))
+    frontier = self.get_frontier(self.get_next_unexplored_field())
+    while len(frontier) > 0:
+      move = frontier[0]
+      move.current.explored = True
 
-  # x = get_move_costs(get_frontier(self.robot))
-  # sort_frontier(x)
+      for other_move in frontier:
+        self.add_distances(other_move)
 
+      frontier = self.get_frontier(self.get_next_unexplored_field())
 
-
+    self.print_optimal_path()
 
 
 def read_and_matrisize(file):

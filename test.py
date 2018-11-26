@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import sys
+import sys, copy
 
 OBSTACLE = '*'
 ROBOT = 'R'
@@ -40,6 +40,9 @@ class Map:
         rows = rows + f" {col.value}"
       rows = rows + "\n"
     return rows
+
+  def copy(self):
+    return Map(copy.deepcopy(self.fields))
 
 class Move:
   def __init__(self, current: Field, to: Field, cost: int):
@@ -134,20 +137,36 @@ class Pathfinder:
       move.to.distance = move.current.distance + move.cost
       move.to.predecessor = move.current
 
-  def print_optimal_path(self):
+  def get_optimal_path(self):
     pre = self.goal
     res = []
     if self.goal.distance == float("inf"):
-      print('no path found')
+      return res
     else:
       while pre != None:
-        res.append(f"{pre.position}")
+        res.append(pre.position)
         if pre.distance == 0:
           pre = None
         else:
           pre = pre.predecessor
+    return res[::-1]
 
-      print(f"optimal path:\n\tdist:\t{self.goal.distance}\n\tpath:\t{' -> '.join(res[::-1])}")
+
+  def print_optimal_path(self):
+    optimal_path = self.get_optimal_path()
+    if len(optimal_path) > 0:
+      optimal_path_str = list(map(lambda pos: f"{pos}", optimal_path))
+      print(f"optimal path has a distance of {self.goal.distance}")
+    else:
+      print('no path found')
+
+  def print_map_with_optimal_path(self):
+    enhanced_map = self.map.copy()
+    optimal_path = self.get_optimal_path()
+    if len(optimal_path) > 0:
+      for pos in optimal_path[1:-1]:
+        enhanced_map.fields[pos.y][pos.x].value = '$'
+    print(enhanced_map)
 
   def start(self):
     print(self.map)
@@ -162,6 +181,7 @@ class Pathfinder:
 
       frontier = self.get_frontier(self.get_next_unexplored_field())
 
+    self.print_map_with_optimal_path()
     self.print_optimal_path()
 
 
